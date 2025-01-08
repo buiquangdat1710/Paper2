@@ -34,7 +34,7 @@ model_roberta = 'FacebookAI/roberta-base'
 model_name = model_codesage_small
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-file_path = 'full_data.csv'
+file_path = 'bigvul.csv'
 data = pd.read_csv(file_path)
 print(len(data))
 data = data[['code', 'label']]
