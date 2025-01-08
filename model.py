@@ -31,7 +31,7 @@ model_ckpt_t5 = 'Salesforce/codet5p-110m-embedding'
 model_ckpt_unixcoder = 'microsoft/unixcoder-base'
 model_codesage_small = 'codesage/codesage-small'
 model_roberta = 'FacebookAI/roberta-base'
-model_name = model_ckpt_t5
+model_name = model_codesage_small
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 file_path = 'bigvul.csv'
