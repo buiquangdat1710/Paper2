@@ -34,7 +34,7 @@ model_roberta = 'FacebookAI/roberta-base'
 model_name = model_codesage_small
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-file_path = 'bigvul.csv'
+file_path = 'full_data.csv'
 data = pd.read_csv(file_path)
 print(len(data))
 data = data[['code', 'label']]
@@ -146,8 +146,8 @@ class RotaryEmbedding(nn.Module):
         for chunk in chunks:
             cos, sin = self._get_rotation(chunk.shape[1])
             
-            cos = self.dropout(cos) * self.gate
-            sin = self.dropout(sin) * self.gate
+            cos = self.dropout(cos) 
+            sin = self.dropout(sin)
             
             rotated_chunks.append((cos[:, :chunk.shape[1]], sin[:, :chunk.shape[1]]))
             
@@ -156,20 +156,19 @@ class RotaryEmbedding(nn.Module):
         
         return cos, sin
 
-def apply_rotary_pos_emb(x, cos, sin):
-    original_x = x
-    x_reshape = x.unsqueeze(-2)
-    x_1, x_2 = x_reshape.chunk(2, dim=-1)
-    
-    x_rotated = torch.cat(
-        (
-            x_1 * cos - x_2 * sin,
-            x_2 * cos + x_1 * sin,
-        ),
-        dim=-1,
-    ).squeeze(-2)
-    
-    return x_rotated + 0.1 * original_x
+    def apply_rotary_pos_emb(self,x, cos, sin):
+        original_x = x
+        x_reshape = x.unsqueeze(-2)
+        x_1, x_2 = x_reshape.chunk(2, dim=-1)
+        
+        x_rotated = torch.cat(
+            (
+                x_1 * cos - x_2 * sin,
+                x_2 * cos + x_1 * sin,
+            ),
+            dim=-1,
+        ).squeeze(-2)
+        return x_rotated +  0.1*original_x
 
 class CodeBertModel(nn.Module):
     def __init__(self,
@@ -177,8 +176,8 @@ class CodeBertModel(nn.Module):
                  chunk_size: int = 512,
                  padding_idx: int = 0,
                  model_ckpt: str = '',
-                 num_heads: int = 4,
-                 dropout: float = 0.15,
+                 num_heads: int = 8,
+                 dropout: float = 0.05,
                  **from_pretrained_kwargs):
         super().__init__()
         self.embedding_model = AutoModel.from_pretrained(model_ckpt, trust_remote_code=True).to(device)
@@ -195,10 +194,10 @@ class CodeBertModel(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=embed_dim,
             nhead=num_heads,
-            dim_feedforward=2*embed_dim,  # Increased FFN size
+            dim_feedforward=embed_dim,  
             dropout=dropout,
             batch_first=True,
-            activation=F.gelu  # Using GELU activation
+            activation=F.gelu 
         )
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer=encoder_layer,
@@ -227,18 +226,18 @@ class CodeBertModel(nn.Module):
         
         # Apply layer norm and dropout
         hidden_states = F.layer_norm(hidden_states, hidden_states.shape[2:])
-        hidden_states = self.dropout(hidden_states * self.scale)
-        
+        # hidden_states = self.dropout(hidden_states * self.scale)
+        hidden_states = hidden_states * self.scale
         batch_size, seq_len, embed_dim = hidden_states.shape
         cos, sin = self.rope(hidden_states, seq_len=seq_len)
         
-        hidden_states = apply_rotary_pos_emb(hidden_states, cos, sin) 
+        hidden_states = self.rope.apply_rotary_pos_emb(hidden_states, cos, sin) 
         # Add residual connection
         residual = hidden_states 
         # Apply transformer with improved masking
         mask = attention_mask == 0
         encoded = self.transformer_encoder(hidden_states, src_key_padding_mask=mask)
-        encoded = encoded + residual  # Residual connection  
+        # encoded = encoded + residual  # Residual connection  
         # Weighted pooling
         mask_expanded = attention_mask.unsqueeze(-1).float()
         weights = F.softmax(self.ffn[1](encoded), dim=1)  # Learn attention weights
@@ -266,19 +265,18 @@ if not os.path.exists(directory):
     os.makedirs(directory)
 training_arguments = TrainingArguments(
     output_dir = './modelsave',
-    evaluation_strategy = 'steps',
-    eval_steps = 100,
-    per_device_train_batch_size = 16,
-    per_device_eval_batch_size = 16,
-    gradient_accumulation_steps = 16,
-    learning_rate = 2e-4,
+    evaluation_strategy = 'epoch',
+    eval_steps = 50,
+    per_device_train_batch_size = 4,
+    per_device_eval_batch_size = 4,
+    gradient_accumulation_steps = 8,
+    learning_rate = 2e-5,
     num_train_epochs = 15,
     warmup_ratio = 0.1,
-    lr_scheduler_type = 'cosine',
     weight_decay = 0.01,
-    logging_strategy = 'steps',
+    logging_strategy = 'epoch',
     logging_steps = 50,
-    save_strategy = 'steps',
+    save_strategy = 'epoch',
     save_steps = 500,
     save_total_limit = 2,
     load_best_model_at_end = True,
