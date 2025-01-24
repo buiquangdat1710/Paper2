@@ -29,7 +29,7 @@ model_ckpt_c = 'neulab/codebert-c'
 model_ckpt_cpp = 'neulab/codebert-cpp'
 model_ckpt_t5 = 'Salesforce/codet5p-110m-embedding'
 model_ckpt_unixcoder = 'microsoft/unixcoder-base'
-model_codesage_small = 'codesage/codesage-small'
+model_codesage_small = 'codesage/codesage-small-v2'
 model_roberta = 'FacebookAI/roberta-base'
 model_name = model_codesage_small
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -139,21 +139,9 @@ class RotaryEmbedding(nn.Module):
     def forward(self, x, seq_len=None):
         if seq_len is None:
             seq_len = x.shape[1]
-            
-        chunks = x.chunk(math.ceil(x.shape[1] / self.chunk_size), dim=1)
-        rotated_chunks = []
-        
-        for chunk in chunks:
-            cos, sin = self._get_rotation(chunk.shape[1])
-            
-            cos = self.dropout(cos) 
-            sin = self.dropout(sin)
-            
-            rotated_chunks.append((cos[:, :chunk.shape[1]], sin[:, :chunk.shape[1]]))
-            
-        cos = torch.cat([c[0] for c in rotated_chunks], dim=1)
-        sin = torch.cat([c[1] for c in rotated_chunks], dim=1)
-        
+        cos, sin = self._get_rotation(seq_len)
+        cos = self.dropout(cos)
+        sin = self.dropout(sin)
         return cos, sin
 
     def apply_rotary_pos_emb(self,x, cos, sin):
